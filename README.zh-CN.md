@@ -35,7 +35,7 @@ DSH -> 持久 Cordis 插件 -> HTTP 127.0.0.1:32123
 ## Windows 安装
 
 ```powershell
-git clone https://github.com/dddzzz123-dz/codex-dsh-bridge.git
+git clone https://github.com/yukinatsuqwq/codex-dsh-bridge.git
 cd codex-dsh-bridge
 powershell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1 -Target Both
 ```
