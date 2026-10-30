@@ -1,0 +1,17 @@
+bridge/runtime/
+.tmp/
+*.log
+*.pid
+state.json
+current-session.json
+pending-*.json
+events.ndjson
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+.credentials.yaml
+

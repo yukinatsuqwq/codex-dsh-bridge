@@ -1,0 +1,3 @@
+- insert:
+    - id: codex-appserver-bridge
+      name: codex-dsh-bridge/bridge/dsh-plugin/index.mjs

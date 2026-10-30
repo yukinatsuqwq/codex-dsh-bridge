@@ -1,0 +1,19 @@
+{
+  "name": "codex-dsh-bridge",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check scripts/dsh-client.mjs && node --check scripts/doctor.mjs && node --check bridge/controller/app-server-client.mjs && node --check bridge/controller/controller.mjs && node --check bridge/controller/smoke-test.mjs && node --check bridge/dsh-plugin/index.mjs",
+    "doctor": "node scripts/doctor.mjs"
+  },
+  "engines": {
+    "node": ">=22",
+    "dsh": ">=0.2.0 <0.3.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

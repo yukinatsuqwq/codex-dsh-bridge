@@ -1,0 +1,5 @@
+interface:
+  display_name: "Codex DSH Bridge"
+  short_description: "Coordinate visible Codex and DeepSeek tasks both ways."
+  default_prompt: "Use $codex-dsh-bridge to coordinate this task between Codex and DeepSeek Harness with explicit context and a visible audit trail."
+
