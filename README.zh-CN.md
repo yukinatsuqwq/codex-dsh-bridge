@@ -2,6 +2,14 @@
 
 [English README](README.md)
 
+Desktop 实验通道：安装插件并重启 DSH 后，可在仓库中运行
+`node scripts/dsh-local.mjs --help`。该通道通过本机 IPC 创建独立会话、
+发送文本及读取有限结果，无需浏览器凭据。问题和授权默认在 Desktop 中处理；
+创建时添加 `--interactions ipc` 可使用 `pending`、`answer` 和 `answer-approval`。
+“本次允许”必须得到用户对具体操作的授权，并提供对应请求的确认值。
+详见 [macOS IPC 验证记录](docs/MAC-IPC-VERIFICATION.md)和
+[Windows IPC 验证记录](docs/WINDOWS-IPC-VERIFICATION.md)；尚未完成全部回归。
+
 这是一个在本机运行、交互过程可见的 Codex 与 DeepSeek Harness（DSH）双向桥接项目。
 
 - **Codex 调用 DSH：**Codex 可以创建或继续一个 Web UI 中可见的 DSH 对话，监听提问与授权，并读取结果。
@@ -12,7 +20,7 @@
 
 ## 当前状态
 
-实验性版本。目前只在 **Windows 11**、Codex 桌面应用/CLI 和 DSH Web UI 上完成实现与验证。DSH 仍处于开发者预览阶段，可能发生破坏兼容性的变化。macOS 与 Linux 尚未验证，controller 自动启动目前只支持 Windows。
+实验性版本。Windows 11 已验证 Controller 和 DSH→Codex 路径；macOS arm64 已完成 Desktop 本机 IPC 实机验证。Windows Named Pipe 已通过 Windows 单元和生命周期测试，但仍需使用与 Mac 验证版本 `0.2.1-rc.5` 兼容的 DSH Desktop 完成真实界面闭环；本轮 Windows 机器只有 `0.2.1-rc.2`。DSH 仍处于开发者预览阶段，可能发生破坏兼容性的变化。
 
 ## 架构
 
@@ -31,6 +39,40 @@ DSH -> 持久 Cordis 插件 -> HTTP 127.0.0.1:32123
 - 可通过 `codex` 命令访问的 Codex CLI，或设置 `CODEX_BRIDGE_EXECUTABLE`
 - 已完成登录的本地 Codex 环境
 - 已验证的 Windows 安装和自动启动流程需要 PowerShell 5.1 或更新版本
+
+在 macOS 上，必须确保非交互进程也能从 `PATH` 找到 `node` 和 `codex`，而不只是 Terminal 的交互 shell。Controller 使用回环端口 `32123`，DSH Web 默认使用 `3080`；本地防火墙或终端安全软件需要允许回环通信。Apple Silicon 与 Intel 使用相同的 JavaScript 入口，但两种架构都还没有完成端到端验证。
+
+## macOS/Linux 安装
+
+```sh
+git clone https://github.com/yukinatsuqwq/codex-dsh-bridge.git
+cd codex-dsh-bridge
+node scripts/install.mjs --target Both
+```
+
+安装器会先备份已有 Skill 和 DSH patch 文件，再替换或追加配置。安装后重启 Codex 和 DSH Web。使用跨平台管理器启动或检查 Controller：
+
+```sh
+npm run controller:start
+npm run controller:status
+npm run doctor
+```
+
+第一次启动 Controller 会创建 `bridge/runtime/state.json`，并可能创建专用 Codex 桥接任务，因此它不是零写入的健康检查。日志保存在 `bridge/runtime/controller.log`。
+
+### DSH Desktop
+
+DSH Desktop 独占单独的 `desktop` profile，不会加载 `web` profile 的 patch。请先完全退出 DSH Desktop，再使用桌面版自带或已经注册的 `dsh` 命令安装本仓库，然后重新打开应用：
+
+```sh
+dsh plugin --profile desktop add /本仓库的绝对路径/codex-dsh-bridge
+```
+
+必须使用仓库绝对路径；不要从 Desktop 的私有回环 URL 中复制认证令牌。如果系统没有 `node`，插件会使用 DSH 自身的 Node 运行时。前面的 Web profile 安装仍用于 `127.0.0.1:3080` 工作流。
+
+Windows Desktop IPC 使用 Named Pipe，并要求每次请求携带随机令牌。令牌保存在仅允许当前用户和 SYSTEM 访问的状态目录中；实现不依赖 Named Pipe 默认权限，也不会额外开放 TCP 端口。
+
+DSH `0.2.1-rc.5` 使用浏览器 session 保护 Web API。当前 Codex→DSH 客户端刻意不读取或保存启动 Token、Cookie，因此在该版本上会返回明确的 HTTP 401 兼容性错误。在官方提供并实现不暴露秘密的外部客户端认证机制前，不能把 Web 端口可访问等同于 Codex→DSH 闭环通过。
 
 ## Windows 安装
 
@@ -58,9 +100,9 @@ npm run doctor
 
 在 Codex 中要求它使用 `codex-dsh-bridge` Skill，或者直接运行：
 
-```powershell
-node .\scripts\dsh-client.mjs send --continue --text "检查这个实现并返回风险最高的三个问题。"
-node .\scripts\dsh-client.mjs watch --continue --seconds 60
+```sh
+node scripts/dsh-client.mjs send --continue --text "检查这个实现并返回风险最高的三个问题。"
+node scripts/dsh-client.mjs watch --continue --seconds 60
 ```
 
 DSH 持久插件提供：
@@ -90,7 +132,27 @@ Windows 绝对路径不会自动出现在 DSH 的工作区或沙箱里。如果 
 - App Server 操作期间，Codex 桌面任务可能短暂显示“在其他位置打开”；每次调用完成后 controller 会释放 writer。
 - 请求会串行执行。它是协作桥接，不是高吞吐量多 Agent 调度器。
 - DSH Web API 与 Cordis 插件接口仍可能变化，重要工作流应固定已验证版本。
-- macOS/Linux 的安装、进程管理和插件自动启动尚未验证。
+- DSH Desktop 使用经过认证的动态回环端口，而不是 Web profile 固定的 `3080`；`scripts/dsh-client.mjs` 目前只支持 Web profile。DSH→Codex 插件安装到对应 profile 后可用于两者。
+- DSH `0.2.1-rc.5` 的 Web API 认证尚不受 `scripts/dsh-client.mjs` 支持；客户端会用明确的 HTTP 401 错误安全失败，不读取浏览器凭证。
+- 返回给 DSH 的 task 快照会移除本地工作目录路径。
+- macOS arm64 Desktop IPC 已完成实机验证。Windows Named Pipe 已在 Windows 隔离测试中通过，包括错误令牌拒绝；由于本机 DSH Desktop 版本旧于 Mac 验证版本，真实 Desktop 闭环仍待验证。Intel macOS 与 Linux 尚未验证。
+
+## 配置
+
+| 变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `CODEX_BRIDGE_EXECUTABLE` | `codex` | Codex CLI 可执行文件或包装器 |
+| `CODEX_BRIDGE_WORKSPACE` | 仓库根目录 | 桥接任务工作目录 |
+| `CODEX_BRIDGE_HOST` | `127.0.0.1` | 仅接受此 IPv4 回环地址，禁止向局域网暴露 |
+| `CODEX_BRIDGE_PORT` | `32123` | Controller 端口 |
+| `CODEX_BRIDGE_THREAD_NAME` | `DSH-Codex 双向桥接专用任务` | 专用桥接任务标题 |
+| `CODEX_BRIDGE_URL` | `http://127.0.0.1:32123` | DSH 插件使用的 Controller URL |
+| `CODEX_APP_SERVER_URL` | 未设置 | `CODEX_BRIDGE_URL` 的旧版别名 |
+| `CODEX_APP_SERVER_REQUEST_TIMEOUT_MS` | `120000` | 单次 App Server RPC 超时 |
+| `DSH_BASE_URL` | `http://127.0.0.1:3080` | DSH Web API 地址 |
+| `DSH_BRIDGE_STATE_FILE` | `.tmp/dsh-bridge/current-session.json` | Codex→DSH 可复用 session 指针 |
+| `AGENTS_HOME` | `~/.agents` | DSH 兼容 Skill 的安装根目录 |
+| `DSH_HOME` | `~/.dsh` | 安装器使用的 DSH profile 根目录 |
 
 ## 隐私
 

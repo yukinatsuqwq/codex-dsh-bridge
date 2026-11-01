@@ -5,15 +5,18 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CodexAppServerClient } from "./app-server-client.mjs";
+import { resolveCodexExecutable } from "../resolve-codex.mjs";
+import { validateEndpoint, validateRequest, readBody } from "./http-policy.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const bridgeRoot = path.resolve(here, "..");
 const workspace = path.resolve(process.env.CODEX_BRIDGE_WORKSPACE ?? path.resolve(bridgeRoot, ".."));
 const runtimeDir = path.resolve(here, "../runtime");
 const statePath = path.join(runtimeDir, "state.json");
-const executable = process.env.CODEX_BRIDGE_EXECUTABLE ?? "codex";
+const executable = resolveCodexExecutable();
 const host = process.env.CODEX_BRIDGE_HOST ?? "127.0.0.1";
 const port = Number(process.env.CODEX_BRIDGE_PORT ?? 32123);
+validateEndpoint(host, port);
 const threadName = process.env.CODEX_BRIDGE_THREAD_NAME ?? "DSH-Codex 双向桥接专用任务";
 
 fs.mkdirSync(runtimeDir, { recursive: true });
@@ -37,15 +40,12 @@ ready.catch(() => undefined);
 
 const server = http.createServer(async (req, res) => {
   try {
-    const url = new URL(req.url, `http://${req.headers.host ?? `${host}:${port}`}`);
-    if (req.method === "POST" && !isTrustedWriteRequest(req)) {
-      return json(res, 403, { ok: false, error: "untrusted bridge request" });
-    }
-    if (req.method === "POST" && !String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) {
-      return json(res, 415, { ok: false, error: "application/json is required" });
-    }
+    validateRequest(req, port);
+    const url = new URL(req.url, `http://${host}:${port}`);
     if (req.method === "GET" && url.pathname === "/health") {
       return json(res, readyStatus === "failed" ? 503 : 200, {
+        service: "codex-dsh-bridge",
+        protocolVersion: 1,
         ok: readyStatus !== "failed",
         ready: readyStatus === "ready",
         status: readyStatus,
@@ -137,18 +137,28 @@ const server = http.createServer(async (req, res) => {
     }
     return json(res, 404, { ok: false, error: "not found" });
   } catch (error) {
-    return json(res, 500, { ok: false, error: error.message });
+    return json(res, error.status ?? 500, { ok: false, code: error.code ?? "BRIDGE_ERROR", error: error.message });
   }
 });
 
 server.listen(port, host, () => {
   console.log(`DSH Codex bridge controller listening on http://${host}:${port}`);
 });
+server.on("error", async (error) => {
+  console.error(`Controller HTTP server failed on ${host}:${port}: ${error.message}`);
+  readyStatus = "failed";
+  readyError = error;
+  await app.stop().catch(() => undefined);
+  process.exit(1);
+});
 
+let shuttingDown = false;
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     server.close();
-    await app.stop();
+    await app.stop().catch((error) => console.error(`Could not stop Codex app-server: ${error.message}`));
     process.exit(0);
   });
 }
@@ -363,7 +373,6 @@ function compactThread(thread) {
     id: thread.id,
     name: thread.name ?? null,
     preview: thread.preview ?? null,
-    cwd: thread.cwd ?? null,
     createdAt: thread.createdAt ?? null,
     updatedAt: thread.updatedAt ?? null,
     status: thread.status ?? null,
@@ -422,29 +431,4 @@ function json(res, status, body) {
   const data = Buffer.from(JSON.stringify(body));
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "content-length": data.length });
   res.end(data);
-}
-
-function isTrustedWriteRequest(req) {
-  const requestHost = String(req.headers.host ?? "").split(":")[0].replace(/^\[|\]$/g, "").toLowerCase();
-  if (requestHost !== "127.0.0.1" && requestHost !== "localhost" && requestHost !== "::1") return false;
-  const origin = req.headers.origin;
-  if (!origin) return true;
-  try {
-    const originHost = new URL(origin).hostname.toLowerCase();
-    return originHost === "127.0.0.1" || originHost === "localhost" || originHost === "::1";
-  } catch {
-    return false;
-  }
-}
-
-async function readBody(req) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > 1024 * 1024) throw new Error("request body exceeds 1 MiB");
-    chunks.push(chunk);
-  }
-  if (!chunks.length) return {};
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }

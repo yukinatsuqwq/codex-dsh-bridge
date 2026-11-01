@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { startLocalIpc } from "./local-ipc.mjs";
 
 // The desktop DSH plugin loader already accepts this plain tool descriptor.
 // Keeping this tiny adapter local avoids depending on DSH's private bundled package.
@@ -23,16 +24,30 @@ function defineTool(descriptor) {
 }
 
 export const name = "codex-appserver-bridge";
-export const inject = ["tools", "subprocess"];
+export const inject = ["tools", "subprocess", "sessionController", "sessions"];
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const bridgeDir = path.resolve(here, "..");
 const workspace = path.resolve(bridgeDir, "..");
-const manager = path.join(bridgeDir, "manage-controller.ps1");
-const baseUrl = process.env.CODEX_APP_SERVER_URL ?? "http://127.0.0.1:32123";
+const manager = path.join(bridgeDir, "manage-controller.mjs");
+const baseUrl = process.env.CODEX_BRIDGE_URL ?? process.env.CODEX_APP_SERVER_URL ?? "http://127.0.0.1:32123";
 let controllerStart;
 
 export function apply(ctx) {
+  ctx.effect(() => {
+    let disposed = false;
+    let cleanup;
+    const starting = (async () => {
+      try {
+        const dispose = await startLocalIpc(ctx);
+        if (disposed) dispose();
+        else cleanup = dispose;
+      } catch (error) {
+        ctx.logger.warn(`Codex local IPC unavailable: ${error.message}`);
+      }
+    })();
+    return async () => { disposed = true; cleanup?.(); await starting; };
+  });
   ctx.tools.register(makeTool({
     name: "codex_ask",
     description: "Send a concrete task to the persistent Codex bridge task. Returns a request id immediately; use codex_check until it completes.",
@@ -151,7 +166,7 @@ export function apply(ctx) {
         description: "The requestId returned by codex_ask.",
       },
     },
-    execute: ({ request_id }) => request(`/v1/requests/${encodeURIComponent(request_id)}`),
+    execute: ({ request_id }) => request(`/v1/requests/${encodeURIComponent(request_id)}`, {}, 5_000),
   }));
 
   ctx.tools.register(makeTool({
@@ -202,7 +217,7 @@ function makeTool({ name: toolName, description, parameters, execute }) {
 async function ensureController(ctx) {
   try {
     const health = await request("/health", {}, 2_000);
-    if (health.ok) return;
+    if (health.ready) return;
   } catch {
     // Start once below, then wait for the health endpoint.
   }
@@ -216,14 +231,16 @@ async function ensureController(ctx) {
 }
 
 async function startController(ctx) {
-  if (process.platform !== "win32") {
-    throw new Error("automatic controller startup is currently implemented only for Windows; start bridge/controller/controller.mjs manually");
-  }
   const subprocess = ctx.get("subprocess");
   if (!subprocess) throw new Error("DSH subprocess service is unavailable");
-  const powershell = await subprocess.resolveExecutable("powershell.exe");
+  let node;
+  try {
+    node = await subprocess.resolveExecutable("node");
+  } catch {}
+  node ||= process.execPath;
+  if (!node) throw new Error("Node.js executable was not found; install Node.js 22+ or configure DSH's runtime");
   const handle = subprocess.spawn({
-    argv: [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", manager, "start"],
+    argv: [node, manager, "start"],
     cwd: workspace,
     stdio: {
       stdin: "ignore",
@@ -243,11 +260,11 @@ async function startController(ctx) {
   });
 
   let lastError;
-  for (let attempt = 0; attempt < 240; attempt += 1) {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 500));
     try {
       const health = await request("/health", {}, 2_000);
-      if (health.ok) return;
+      if (health.ready) return;
     } catch (error) {
       lastError = error;
     }
@@ -257,10 +274,18 @@ async function startController(ctx) {
 }
 
 async function request(pathname, init = {}, timeoutMs = 120_000) {
-  const response = await fetch(`${baseUrl}${pathname}`, {
-    ...init,
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  let response;
+  try {
+    response = await fetch(`${baseUrl}${pathname}`, {
+      ...init,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    const reason = error?.name === "TimeoutError" || error?.name === "AbortError"
+      ? `timed out after ${timeoutMs}ms`
+      : error?.message ?? String(error);
+    throw new Error(`Codex bridge controller is offline or unreachable at ${baseUrl}: ${reason}`, { cause: error });
+  }
   const text = await response.text();
   let body;
   try {

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import readline from "node:readline";
+import { codexSpawnSpec } from "../resolve-codex.mjs";
 
 export class CodexAppServerClient extends EventEmitter {
   constructor({ executable, cwd, logger = console }) {
@@ -12,26 +13,31 @@ export class CodexAppServerClient extends EventEmitter {
     this.pending = new Map();
     this.process = null;
     this.starting = null;
+    const configuredTimeout = Number(process.env.CODEX_APP_SERVER_REQUEST_TIMEOUT_MS ?? 120_000);
+    this.requestTimeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 120_000;
   }
 
   async start() {
-    if (this.process) return;
     if (this.starting) return this.starting;
+    if (this.process) return;
     this.starting = this.#startProcess();
     try {
       await this.starting;
+    } catch (error) {
+      await this.stop();
+      throw error;
     } finally {
       this.starting = null;
     }
   }
 
   async #startProcess() {
-    this.process = spawn(this.executable, ["app-server", "--listen", "stdio://"], {
+    const launch = codexSpawnSpec(this.executable, ["app-server", "--listen", "stdio://"]);
+    this.process = spawn(launch.command, launch.args, {
       cwd: this.cwd,
       env: process.env,
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
-      shell: process.platform === "win32" && !/\.exe$/i.test(this.executable),
     });
 
     readline.createInterface({ input: this.process.stdout }).on("line", (line) => {
@@ -46,27 +52,52 @@ export class CodexAppServerClient extends EventEmitter {
       if (line.trim()) this.logger.error(`[codex app-server] ${line}`);
     });
     const child = this.process;
+    this.process.on("error", (cause) => {
+      const error = new Error(`Could not start Codex app-server executable ${this.executable}: ${cause.message}`, { cause });
+      this.#failProcess(child, error);
+    });
+    this.process.stdin.on("error", (cause) => {
+      const error = new Error(`Codex app-server stdin failed: ${cause.message}`, { cause });
+      this.#failProcess(child, error);
+    });
     this.process.on("exit", (code, signal) => {
       const error = new Error(`Codex app-server exited (code=${code}, signal=${signal})`);
-      for (const entry of this.pending.values()) entry.reject(error);
-      this.pending.clear();
-      if (this.process === child) this.process = null;
-      this.emit("exit", error);
+      this.#failProcess(child, error);
     });
 
     await this.request("initialize", {
       clientInfo: { name: "dsh_codex_bridge", title: "DSH Codex Bridge", version: "0.1.0" },
       capabilities: { experimentalApi: true },
-    });
+    }, 30_000);
     this.notify("initialized", {});
   }
 
-  request(method, params = {}) {
+  request(method, params = {}, timeoutMs = this.requestTimeoutMs) {
     if (!this.process) throw new Error("Codex app-server is not running");
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, method });
-      this.#send({ method, id, params });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`${method}: timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      const entry = {
+        method,
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      };
+      this.pending.set(id, entry);
+      try {
+        this.#send({ method, id, params });
+      } catch (error) {
+        this.pending.delete(id);
+        entry.reject(error);
+      }
     });
   }
 
@@ -81,12 +112,22 @@ export class CodexAppServerClient extends EventEmitter {
   async stop() {
     if (!this.process) return;
     const child = this.process;
+    const error = new Error("Codex app-server stopped");
+    // Reject callers even when a child refuses to finish its outstanding RPCs.
+    this.#failProcess(child, error);
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    let timer;
     const exited = new Promise((resolve) => child.once("exit", resolve));
+    const wait = (milliseconds) => Promise.race([
+      exited.then(() => true),
+      new Promise((resolve) => { timer = setTimeout(() => resolve(false), milliseconds); }),
+    ]).finally(() => clearTimeout(timer));
     if (child.stdin.writable) child.stdin.end();
-    const timeout = setTimeout(() => child.kill(), 2_000);
-    await exited;
-    clearTimeout(timeout);
-    if (this.process === child) this.process = null;
+    if (await wait(2_000)) return;
+    child.kill("SIGTERM");
+    if (await wait(2_000)) return;
+    child.kill("SIGKILL");
+    if (!await wait(2_000)) throw new Error("Codex app-server did not exit after SIGKILL");
   }
 
   #send(message) {
@@ -115,5 +156,13 @@ export class CodexAppServerClient extends EventEmitter {
       return;
     }
     if (message.method) this.emit("notification", message);
+  }
+
+  #failProcess(child, error) {
+    if (this.process !== child) return;
+    for (const entry of this.pending.values()) entry.reject(error);
+    this.pending.clear();
+    this.process = null;
+    this.emit("exit", error);
   }
 }

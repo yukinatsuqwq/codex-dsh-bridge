@@ -3,18 +3,18 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-const DEFAULT_BASE = "http://127.0.0.1:3080";
+const DEFAULT_BASE = process.env.DSH_BASE_URL ?? "http://127.0.0.1:3080";
 const DEFAULT_OUT = ".tmp/dsh-bridge";
 const CURRENT_SESSION_FILE = process.env.DSH_BRIDGE_STATE_FILE ?? ".tmp/dsh-bridge/current-session.json";
 
 function usage() {
   console.log(`Usage:
-  node tools/dsh-codex-bridge.mjs send --text "prompt" [--text-file prompt.md] [--continue] [--base http://127.0.0.1:3080] [--workspace-id id] [--session-id id] [--agent-preset preset] [--title title]
-  node tools/dsh-codex-bridge.mjs watch [--continue] [--session-id id] [--seconds 30] [--out .tmp/dsh-bridge]
-  node tools/dsh-codex-bridge.mjs answer --rpc-id id --session-id id --answers-json "[{...}]"
-  node tools/dsh-codex-bridge.mjs answer-approval --rpc-id id --session-id id --approval-id id --outcome allowed-once|rejected
-  node tools/dsh-codex-bridge.mjs current
-  node tools/dsh-codex-bridge.mjs reset-current
+  node scripts/dsh-client.mjs send --text "prompt" [--text-file prompt.md] [--continue] [--base http://127.0.0.1:3080] [--workspace-id id] [--session-id id] [--agent-preset preset] [--title title]
+  node scripts/dsh-client.mjs watch [--continue] [--session-id id] [--seconds 30] [--out .tmp/dsh-bridge]
+  node scripts/dsh-client.mjs answer --rpc-id id --session-id id --answers-json "[{...}]"
+  node scripts/dsh-client.mjs answer-approval --rpc-id id --session-id id --approval-id id --outcome allowed-once|rejected
+  node scripts/dsh-client.mjs current
+  node scripts/dsh-client.mjs reset-current
 
 Notes:
   - send --agent-preset cordis creates a DSH 创造模式 session when no reusable matching session exists.
@@ -75,6 +75,9 @@ async function api(base, method, payload) {
   });
   const text = await response.text();
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error(`${method} HTTP 401: DSH Web requires an authenticated browser session; this client does not read or store launch tokens or cookies.`);
+    }
     throw new Error(`${method} HTTP ${response.status}: ${text}`);
   }
   return JSON.parse(text);
@@ -93,6 +96,9 @@ async function respond(base, rpcId, result) {
   });
   const text = await response.text();
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("respond HTTP 401: DSH Web requires an authenticated browser session; this client does not read or store launch tokens or cookies.");
+    }
     throw new Error(`respond HTTP ${response.status}: ${text}`);
   }
   return JSON.parse(text);

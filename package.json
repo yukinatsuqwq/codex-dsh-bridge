@@ -1,11 +1,18 @@
 {
   "name": "codex-dsh-bridge",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check scripts/dsh-client.mjs && node --check scripts/doctor.mjs && node --check bridge/controller/app-server-client.mjs && node --check bridge/controller/controller.mjs && node --check bridge/controller/smoke-test.mjs && node --check bridge/dsh-plugin/index.mjs",
-    "doctor": "node scripts/doctor.mjs"
+    "check:ipc": "node --check scripts/dsh-local.mjs && node --check bridge/dsh-plugin/local-ipc.mjs && node --check bridge/dsh-plugin/interactions.mjs && node --check bridge/controller/http-policy.mjs",
+    "test": "node --test bridge/controller/*.test.mjs",
+    "check": "node --check scripts/dsh-client.mjs && node --check scripts/doctor.mjs && node --check scripts/install.mjs && node --check bridge/manage-controller.mjs && node --check bridge/resolve-codex.mjs && node --check bridge/controller/app-server-client.mjs && node --check bridge/controller/controller.mjs && node --check bridge/controller/smoke-test.mjs && node --check bridge/dsh-plugin/index.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "install:bridge": "node scripts/install.mjs",
+    "controller:start": "node bridge/manage-controller.mjs start",
+    "controller:stop": "node bridge/manage-controller.mjs stop",
+    "controller:restart": "node bridge/manage-controller.mjs restart",
+    "controller:status": "node bridge/manage-controller.mjs status"
   },
   "engines": {
     "node": ">=22",

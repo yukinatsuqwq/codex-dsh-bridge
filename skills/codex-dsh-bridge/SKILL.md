@@ -13,7 +13,7 @@ Use the bridge to complete concrete work with an explicit audit trail. Do not de
 
 Use `scripts/dsh-client.mjs` from this skill directory:
 
-```powershell
+```sh
 node scripts/dsh-client.mjs send --continue --text "Review these files and return the top three risks. Do not modify files."
 node scripts/dsh-client.mjs watch --continue --seconds 60
 ```
