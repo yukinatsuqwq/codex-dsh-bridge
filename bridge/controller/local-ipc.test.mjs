@@ -7,7 +7,11 @@ import net from "node:net";
 import { startLocalIpc, callLocalIpc, verifyDirectory } from "../dsh-plugin/local-ipc.mjs";
 
 test("IPC exposes only bridge-created sessions and assistant text", { timeout: 10000 }, async () => {
-  const dir = fs.mkdtempSync(path.join(process.cwd(), ".tmp-dsh-ipc-test-"));
+  // macOS sockaddr_un has a small path limit; keep Unix sockets independent
+  // of the checkout depth. Windows pipes do not use this directory as an address.
+  const dir = fs.mkdtempSync(process.platform === "win32"
+    ? path.join(process.cwd(), ".tmp-dsh-ipc-test-")
+    : "/tmp/dsh-ipc-test-");
   const socket = process.platform === "win32"
     ? `\\\\.\\pipe\\codex-dsh-test-${crypto.randomUUID()}`
     : path.join(dir, "test.sock");

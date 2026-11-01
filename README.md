@@ -26,6 +26,18 @@ Experimental. The controller and DSH-to-Codex path were verified on Windows 11. 
 
 ## Architecture
 
+### macOS regression after the Windows rc.5 update
+
+On macOS arm64 with DSH Desktop `0.2.1-rc.5`, all 12 tests and syntax checks
+for all 18 JavaScript modules pass. Live Desktop IPC health, a new isolated
+session, question/answer and a read-only DSH-to-Codex context round trip passed.
+The controller also starts and stops successfully on macOS.
+
+The IPC integration test now uses a short `/tmp` directory on Unix: putting its
+socket under a deeply nested checkout exceeded macOS's Unix socket address limit
+and failed with `EINVAL`. The Windows test directory and Named Pipe branch are
+unchanged. See [the regression record](docs/MAC-RC5-REGRESSION.md).
+
 ```text
 Codex -> scripts/dsh-client.mjs -> DSH Web API :3080 -> visible DSH session
 

@@ -24,6 +24,16 @@ Desktop 实验通道：安装插件并重启 DSH 后，可在仓库中运行
 
 ## 架构
 
+### Windows rc.5 更新后的 macOS 回归
+
+macOS arm64、DSH Desktop `0.2.1-rc.5` 下，12 项测试及 18 个 JavaScript
+模块语法检查通过。实机验证了 Desktop IPC 健康、新建独立会话、问题回答及
+DSH→Codex 只读 context 闭环，Controller 启动与停止也正常。
+
+修复了 IPC 集成测试在较深仓库路径下超出 macOS Unix socket 地址长度限制、
+报 `EINVAL` 的问题：Unix 测试改用短 `/tmp` 目录，Windows 测试目录和
+Named Pipe 分支保持不变。详见[回归记录](docs/MAC-RC5-REGRESSION.md)。
+
 ```text
 Codex -> scripts/dsh-client.mjs -> DSH Web API :3080 -> Web UI 可见的 DSH 对话
 
