@@ -1,7 +1,7 @@
-# Windows IPC verification — 2026-11-01
+# Windows IPC verification — 2026-11-02
 
 Environment: Windows 11, Node `24.22.1`, Codex CLI `0.166.0-alpha.5.1`, DSH
-Desktop `0.2.1-rc.2`.
+Desktop `0.2.1-rc.5`.
 
 ## Passed
 
@@ -23,17 +23,19 @@ Desktop `0.2.1-rc.2`.
   incorrect token was rejected. The token descriptor directory has inherited
   ACLs removed and grants access only to the current user and SYSTEM.
 - Test result: 11 passed, 0 failed, 1 Unix-only mode test skipped.
+- Live Desktop IPC health passed, then created isolated DSH sessions, submitted
+  bounded read-only review prompts and collected completed assistant snapshots.
+- Forced termination left a Windows descriptor as expected; the next Host
+  authenticated-probed the old Named Pipe, removed only the dead descriptor and
+  restored a healthy IPC endpoint.
 
 ## Not yet claimed
 
-- A live DSH Desktop round trip on Windows is not claimed. The available Windows
-  Desktop was `0.2.1-rc.2`, while the macOS live verification used
-  `0.2.1-rc.5`; plugin contracts are still preview APIs.
 - The old Web client remains intentionally unauthenticated and may receive HTTP
   401 from newer DSH Web builds. It does not read browser cookies or launch tokens.
 - Endpoint security quarantined `bridge/manage-controller.ps1` during testing;
   the user restored it. The Node manager was fully exercised. No security product
   was disabled and no allowlist or system-security setting was changed.
-- Intel macOS, Linux and forced-crash stale-endpoint recovery remain unverified.
+- Intel macOS and Linux remain unverified.
 
 No secrets, private conversation exports or runtime state are part of this report.

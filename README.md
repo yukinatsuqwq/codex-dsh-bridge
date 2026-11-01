@@ -22,7 +22,7 @@ This project coordinates two agent harnesses. It does not replace either model A
 
 ## Status
 
-Experimental. The controller and DSH-to-Codex path were verified on Windows 11. Native Desktop IPC was verified on macOS arm64 and its authenticated Windows Named Pipe transport passed Windows unit and lifecycle tests. A live Windows Desktop round trip still requires a DSH Desktop version compatible with the macOS-tested `0.2.1-rc.5`; the available Windows host during verification was `0.2.1-rc.2`. DSH remains in developer preview and may introduce compatibility-breaking changes.
+Experimental. The controller and DSH-to-Codex path were verified on Windows 11. Native Desktop IPC was verified live on macOS arm64 and Windows 11 with DSH Desktop `0.2.1-rc.5`. The authenticated Windows Named Pipe transport also passed unit, lifecycle, forced-restart recovery and bounded review-session tests. DSH remains in developer preview and may introduce compatibility-breaking changes.
 
 ## Architecture
 
@@ -157,7 +157,7 @@ An absolute Windows path is not automatically visible inside DSH's workspace or 
 - DSH Desktop uses an authenticated, OS-assigned loopback port rather than the Web profile's fixed `3080`; `scripts/dsh-client.mjs` currently targets the Web profile only. The DSH-to-Codex plugin works in either profile when installed into that profile.
 - DSH `0.2.1-rc.5` Web API authentication is not supported by `scripts/dsh-client.mjs`; it fails closed with an explicit HTTP 401 message instead of reading browser credentials.
 - Thread snapshots omit the local working-directory path before they are returned to DSH.
-- macOS arm64 Desktop IPC passed live verification. Windows Named Pipe transport passed isolated Windows tests, including rejection of an incorrect token; a live Desktop round trip remains pending because the available Windows DSH Desktop was older than the macOS-tested build. Intel macOS and Linux remain unverified.
+- macOS arm64 and Windows 11 Desktop IPC passed live verification with DSH Desktop `0.2.1-rc.5`. Windows also passed incorrect-token rejection and forced-restart stale-descriptor recovery. Intel macOS and Linux remain unverified.
 
 ## Privacy
 

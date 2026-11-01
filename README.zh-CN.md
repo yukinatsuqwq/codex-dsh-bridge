@@ -20,7 +20,7 @@ Desktop 实验通道：安装插件并重启 DSH 后，可在仓库中运行
 
 ## 当前状态
 
-实验性版本。Windows 11 已验证 Controller 和 DSH→Codex 路径；macOS arm64 已完成 Desktop 本机 IPC 实机验证。Windows Named Pipe 已通过 Windows 单元和生命周期测试，但仍需使用与 Mac 验证版本 `0.2.1-rc.5` 兼容的 DSH Desktop 完成真实界面闭环；本轮 Windows 机器只有 `0.2.1-rc.2`。DSH 仍处于开发者预览阶段，可能发生破坏兼容性的变化。
+实验性版本。Windows 11 已验证 Controller 和 DSH→Codex 路径；macOS arm64 与 Windows 11 均已使用 DSH Desktop `0.2.1-rc.5` 完成 Desktop 本机 IPC 实机验证。Windows Named Pipe 还通过了单元测试、生命周期测试、强制重启恢复和有界审查会话测试。DSH 仍处于开发者预览阶段，可能发生破坏兼容性的变化。
 
 ## 架构
 
@@ -135,7 +135,7 @@ Windows 绝对路径不会自动出现在 DSH 的工作区或沙箱里。如果 
 - DSH Desktop 使用经过认证的动态回环端口，而不是 Web profile 固定的 `3080`；`scripts/dsh-client.mjs` 目前只支持 Web profile。DSH→Codex 插件安装到对应 profile 后可用于两者。
 - DSH `0.2.1-rc.5` 的 Web API 认证尚不受 `scripts/dsh-client.mjs` 支持；客户端会用明确的 HTTP 401 错误安全失败，不读取浏览器凭证。
 - 返回给 DSH 的 task 快照会移除本地工作目录路径。
-- macOS arm64 Desktop IPC 已完成实机验证。Windows Named Pipe 已在 Windows 隔离测试中通过，包括错误令牌拒绝；由于本机 DSH Desktop 版本旧于 Mac 验证版本，真实 Desktop 闭环仍待验证。Intel macOS 与 Linux 尚未验证。
+- macOS arm64 与 Windows 11 Desktop IPC 均已使用 DSH Desktop `0.2.1-rc.5` 完成实机验证。Windows 还验证了错误令牌拒绝和强制重启后的残留描述文件恢复。Intel macOS 与 Linux 尚未验证。
 
 ## 配置
 
