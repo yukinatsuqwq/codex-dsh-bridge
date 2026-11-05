@@ -11,12 +11,27 @@ Use the bridge to complete concrete work with an explicit audit trail. Do not de
 
 ### Codex To DSH
 
-Use `scripts/dsh-client.mjs` from this skill directory:
+Prefer the authenticated DSH Desktop IPC transport when Desktop is installed. Run
+these commands from the cloned `codex-dsh-bridge` repository:
+
+```sh
+node scripts/dsh-local.mjs health
+node scripts/dsh-local.mjs create --cwd /absolute/workspace --title "Bounded DSH review"
+node scripts/dsh-local.mjs prompt --session-id id --text "Review these files and return the top three risks. Do not modify files."
+node scripts/dsh-local.mjs snapshot --session-id id
+```
+
+Use the Web client only when the user explicitly wants a DSH Web session and the
+Web service is running on port `3080`:
 
 ```sh
 node scripts/dsh-client.mjs send --continue --text "Review these files and return the top three risks. Do not modify files."
 node scripts/dsh-client.mjs watch --continue --seconds 60
 ```
+
+Do not treat `ECONNREFUSED` from `127.0.0.1:3080` as a Desktop failure. Check
+`dsh-local.mjs health` and use Desktop IPC instead. Desktop sessions are isolated
+by default and only sessions created by the bridge Host are accessible.
 
 Use `--text-file` for long or non-ASCII prompts. Use `--agent-preset cordis` only for DSH plugin-development tasks. Reuse `--continue` when the user wants one visible DSH conversation instead of a new conversation each turn.
 

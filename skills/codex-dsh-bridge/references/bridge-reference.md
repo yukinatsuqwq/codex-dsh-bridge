@@ -12,10 +12,11 @@
 
 ## Architecture
 
-The bridge has two independent directions:
+The bridge has two independent directions and two Codex-to-DSH transports:
 
-1. `scripts/dsh-client.mjs` calls the local DSH Web API. DSH sessions remain visible in the Web UI.
-2. The DSH Cordis plugin calls a loopback HTTP controller. The controller starts Codex App Server over stdio for one serialized operation and then releases it.
+1. `scripts/dsh-local.mjs` calls authenticated DSH Desktop IPC. Prefer this transport when Desktop is installed.
+2. `scripts/dsh-client.mjs` calls the local DSH Web API. Use it only for an explicitly requested Web session.
+3. The DSH Cordis plugin calls a loopback HTTP controller. The controller starts Codex App Server over stdio for one serialized operation and then releases it.
 
 The bridge stores only identifiers and bounded request state. It does not merge hidden model state.
 
@@ -43,6 +44,20 @@ Restart Codex and DSH after installation. Start the controller with `npm run con
 DSH Desktop owns a separate `desktop` profile. Fully quit Desktop, run `dsh plugin --profile desktop add /absolute/path/to/codex-dsh-bridge`, and reopen it. Desktop uses authenticated OS-assigned loopback ports, so the Codex-to-DSH HTTP client still requires the separate Web profile on port `3080`; the DSH-to-Codex plugin can run in either profile.
 
 ## Codex To DSH Protocol
+
+### Desktop IPC
+
+Run `node scripts/dsh-local.mjs health` first. Then use `create`, `prompt`, and
+`snapshot` to perform a bounded task in an isolated Desktop-visible session.
+Questions and approvals default to Desktop handling; create with
+`--interactions ipc` only when the bridge caller must handle them through `pending`, `answer`, and
+`answer-approval`.
+
+Desktop uses authenticated OS-assigned local IPC. It does not require port `3080`.
+An `ECONNREFUSED` error from `127.0.0.1:3080` therefore describes only the Web
+transport and must not be reported as a Desktop bridge failure.
+
+### Web transport
 
 `dsh-client.mjs` sends UTF-8 JSON envelopes to DSH:
 
